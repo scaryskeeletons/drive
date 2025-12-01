@@ -50,7 +50,9 @@ export async function GET(
     });
 
     // Transform data for response
-    const transformedGames = games.map((game) => {
+    type GameWithData = Awaited<typeof games>[number];
+    
+    const transformedGames = games.map((game: GameWithData) => {
       let multiplier: number | null = null;
 
       if (game.gameType === "CRASH" && game.crashData) {

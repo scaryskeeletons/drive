@@ -1,7 +1,7 @@
 // Individual shootout game operations
 import { NextRequest, NextResponse } from "next/server";
 import { GameService } from "@/lib/db";
-import { broadcastGameUpdate, broadcastActivity } from "@/lib/sse/broadcaster";
+import { broadcastGameUpdate } from "@/lib/sse/broadcaster";
 
 interface RouteParams {
   params: Promise<{ gameId: string }>;
@@ -46,7 +46,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       const game = await GameService.joinShootout(gameId, userId);
 
       // Broadcast game started
-      broadcastGameUpdate(gameId, game.userId, {
+      broadcastGameUpdate({
+        type: "shootout_new_game",
+        gameId,
         status: "active",
         opponentId: userId,
       });
@@ -69,7 +71,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       );
 
       // Broadcast result
-      broadcastGameUpdate(gameId, game.userId, {
+      broadcastGameUpdate({
+        type: "shootout_result",
+        gameId,
         status: "completed",
         winnerId,
         payout: game.payout,
@@ -81,7 +85,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     if (action === "cancel") {
       const game = await GameService.cancelGame(gameId);
 
-      broadcastGameUpdate(gameId, game.userId, {
+      broadcastGameUpdate({
+        type: "shootout_cancelled",
+        gameId,
         status: "cancelled",
       });
 

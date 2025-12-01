@@ -22,7 +22,9 @@ export async function POST(request: NextRequest) {
     });
 
     // Broadcast game started
-    broadcastGameUpdate(game.id, userId, {
+    broadcastGameUpdate({
+      type: "crash_start",
+      gameId: game.id,
       status: "active",
       gameType: "CRASH",
     });

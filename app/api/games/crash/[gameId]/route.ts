@@ -1,7 +1,7 @@
 // Individual crash game operations
 import { NextRequest, NextResponse } from "next/server";
 import { GameService } from "@/lib/db";
-import { broadcastGameUpdate, broadcastActivity } from "@/lib/sse/broadcaster";
+import { broadcastGameUpdate, broadcastActivityUpdate } from "@/lib/sse/broadcaster";
 
 interface RouteParams {
   params: Promise<{ gameId: string }>;
@@ -59,7 +59,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       const fullGame = await GameService.getById(gameId) as GameWithRelations | null;
 
       // Broadcast result
-      broadcastGameUpdate(gameId, game.userId, {
+      broadcastGameUpdate({
+        type: "crash_cashout",
+        gameId,
         status: "completed",
         won: true,
         payout: game.payout,
@@ -68,7 +70,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
       // Broadcast big win to activity
       if (cashoutMultiplier >= 5 && game.payout && fullGame) {
-        broadcastActivity({
+        broadcastActivityUpdate({
           type: "big_win",
           gameType: "CRASH",
           amount: game.payout,
@@ -86,7 +88,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       // Get full game data for the broadcast
       const fullGame = await GameService.getById(gameId) as GameWithRelations | null;
 
-      broadcastGameUpdate(gameId, game.userId, {
+      broadcastGameUpdate({
+        type: "crash_end",
+        gameId,
         status: "completed",
         won: false,
         crashPoint: fullGame?.crashData?.crashPoint,

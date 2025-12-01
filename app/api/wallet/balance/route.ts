@@ -37,15 +37,15 @@ export async function GET(request: NextRequest) {
       // Check if this balance was already processed
       const lastSnapshot = await prisma.balanceSnapshot.findFirst({
         where: { userId: wallet.userId },
-        orderBy: { createdAt: "desc" },
+        orderBy: { timestamp: "desc" },
       });
 
       // Simple check: if on-chain has funds, credit them
       // In production, you'd want more sophisticated tracking
       const existingPendingDeposit = await prisma.pendingDeposit.findFirst({
         where: {
-          userId: wallet.userId,
-          status: "PENDING",
+          walletId: wallet.id,
+          status: "pending",
         },
       });
 
@@ -79,6 +79,8 @@ export async function GET(request: NextRequest) {
               userId: wallet.userId,
               type: "DEPOSIT",
               amount: depositAmount,
+              balanceBefore: wallet.balance,
+              balanceAfter: wallet.balance + depositAmount,
               status: "CONFIRMED",
               metadata: { source: "auto_detect", address },
             },

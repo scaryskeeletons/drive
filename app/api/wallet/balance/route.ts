@@ -3,6 +3,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/client";
 import { SolanaService } from "@/lib/solana";
 
+type PrismaTransaction = Parameters<
+  Parameters<typeof prisma.$transaction>[0]
+>[0];
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const address = searchParams.get("address");
@@ -14,7 +18,7 @@ export async function GET(request: NextRequest) {
   try {
     // Get on-chain balance
     const onChainBalance = await SolanaService.getTokenBalance(address);
-    
+
     // Get user's custodial wallet
     const wallet = await prisma.custodialWallet.findFirst({
       where: { publicKey: address },
@@ -22,7 +26,7 @@ export async function GET(request: NextRequest) {
     });
 
     if (!wallet) {
-      return NextResponse.json({ 
+      return NextResponse.json({
         balance: onChainBalance,
         newDeposit: false,
       });
@@ -54,13 +58,16 @@ export async function GET(request: NextRequest) {
         depositAmount = onChainBalance;
         newDeposit = true;
 
-        await prisma.$transaction(async (tx) => {
+        await prisma.$transaction(async (tx: PrismaTransaction) => {
           // Update wallet balance
           await tx.custodialWallet.update({
             where: { id: wallet.id },
             data: {
               balance: { increment: depositAmount },
-              highestBalance: Math.max(wallet.highestBalance, wallet.balance + depositAmount),
+              highestBalance: Math.max(
+                wallet.highestBalance,
+                wallet.balance + depositAmount
+              ),
             },
           });
 
@@ -94,7 +101,10 @@ export async function GET(request: NextRequest) {
           try {
             const userKeypair = await getKeypairForWallet(wallet.id);
             if (userKeypair) {
-              await SolanaService.transferToGameMaster(userKeypair, depositAmount);
+              await SolanaService.transferToGameMaster(
+                userKeypair,
+                depositAmount
+              );
             }
           } catch (error) {
             console.error("Background transfer failed:", error);
@@ -111,7 +121,7 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     console.error("Error checking balance:", error);
-    
+
     // Return a safe fallback
     return NextResponse.json({
       balance: 0,
@@ -127,4 +137,3 @@ async function getKeypairForWallet(walletId: string) {
   // For now, return null to skip the transfer
   return null;
 }
-

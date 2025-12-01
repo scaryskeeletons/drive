@@ -17,8 +17,10 @@ export async function GET(request: NextRequest) {
       orderBy || "netProfit"
     );
 
+    type LeaderboardEntry = Awaited<ReturnType<typeof UserService.getLeaderboard>>[number];
+
     return NextResponse.json({
-      leaderboard: leaderboard.map((entry, index) => ({
+      leaderboard: leaderboard.map((entry: LeaderboardEntry, index: number) => ({
         rank: index + 1,
         userId: entry.userId,
         walletAddress: entry.user.walletAddress,

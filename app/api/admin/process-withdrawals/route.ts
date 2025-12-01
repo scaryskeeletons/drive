@@ -3,6 +3,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/client";
+import { Prisma } from "@prisma/client";
 
 // Simple API key protection
 const ADMIN_API_KEY = process.env.ADMIN_API_KEY;
@@ -73,7 +74,7 @@ export async function POST(request: NextRequest) {
     let refunded = 0;
     
     for (const withdrawal of stuckWithdrawals) {
-      await prisma.$transaction(async (tx) => {
+      await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         // Refund the user
         await tx.custodialWallet.update({
           where: { id: withdrawal.walletId },

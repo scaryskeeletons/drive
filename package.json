@@ -10,7 +10,7 @@
     "postinstall": "prisma generate"
   },
   "dependencies": {
-    "@prisma/client": "^6.19.0",
+    "@prisma/client": "6.19.0",
     "@radix-ui/react-avatar": "^1.1.11",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-scroll-area": "^1.2.10",
@@ -34,7 +34,7 @@
     "motion": "^12.23.24",
     "next": "16.0.6",
     "postprocessing": "^6.38.0",
-    "prisma": "^6.19.0",
+    "prisma": "6.19.0",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "recharts": "^2.15.4",

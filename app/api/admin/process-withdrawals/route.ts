@@ -3,7 +3,10 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/client";
-import { Prisma } from "@prisma/client";
+
+type PrismaTransaction = Parameters<
+  Parameters<typeof prisma.$transaction>[0]
+>[0];
 
 // Simple API key protection
 const ADMIN_API_KEY = process.env.ADMIN_API_KEY;
@@ -41,14 +44,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       stats: { pending, processing, confirmed, failed },
       stuck,
-      message: "Withdrawals process instantly in background. This is for monitoring only.",
+      message:
+        "Withdrawals process instantly in background. This is for monitoring only.",
     });
   } catch (error) {
     console.error("Error getting withdrawal stats:", error);
-    return NextResponse.json(
-      { error: "Failed to get stats" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to get stats" }, { status: 500 });
   }
 }
 
@@ -62,7 +63,7 @@ export async function POST(request: NextRequest) {
   try {
     // Mark very old "processing" withdrawals as failed (over 10 minutes)
     const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
-    
+
     const stuckWithdrawals = await prisma.pendingWithdrawal.findMany({
       where: {
         status: "processing",
@@ -72,9 +73,9 @@ export async function POST(request: NextRequest) {
     });
 
     let refunded = 0;
-    
+
     for (const withdrawal of stuckWithdrawals) {
-      await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      await prisma.$transaction(async (tx: PrismaTransaction) => {
         // Refund the user
         await tx.custodialWallet.update({
           where: { id: withdrawal.walletId },
@@ -103,7 +104,7 @@ export async function POST(request: NextRequest) {
           data: { status: "FAILED" },
         });
       });
-      
+
       refunded++;
     }
 
@@ -113,9 +114,6 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("Error processing stuck withdrawals:", error);
-    return NextResponse.json(
-      { error: "Failed to process" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to process" }, { status: 500 });
   }
 }

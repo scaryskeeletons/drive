@@ -1,0 +1,382 @@
+// Prisma schema for DriveBy Gaming Platform
+// Comprehensive data storage for all game activity
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ============================================
+// USER & WALLET
+// ============================================
+
+model User {
+  id              String   @id @default(cuid())
+  
+  // Auth
+  walletAddress   String?  @unique  // External wallet (Phantom, etc.)
+  
+  // Profile
+  username        String?  @unique
+  avatarSeed      String?  // For dicebear avatar
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  lastActiveAt    DateTime @default(now())
+  
+  // Relations
+  custodialWallet CustodialWallet?
+  transactions    Transaction[]
+  gameRounds      GameRound[]
+  stats           UserStats?
+  balanceHistory  BalanceSnapshot[]
+  
+  @@index([walletAddress])
+  @@index([username])
+}
+
+// Generated custodial wallet for each user
+model CustodialWallet {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Wallet data (encrypted in production)
+  publicKey       String   @unique
+  encryptedKey    String   // Encrypted private key
+  
+  // Balance tracking (in token units)
+  balance         Float    @default(0)      // Available balance
+  pendingBalance  Float    @default(0)      // Funds locked in active games
+  lockedBalance   Float    @default(0)      // Funds locked for pending withdrawals
+  
+  // Withdrawable = balance - pendingBalance - lockedBalance
+  
+  // Stats
+  totalDeposited  Float    @default(0)
+  totalWithdrawn  Float    @default(0)
+  
+  // Balance records (all-time)
+  highestBalance  Float    @default(0)
+  lowestBalance   Float    @default(0)
+  
+  // Token info
+  tokenMint       String?  // SPL token mint address we accept
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  // Pending deposits/withdrawals
+  pendingDeposits  PendingDeposit[]
+  pendingWithdrawals PendingWithdrawal[]
+  
+  @@index([publicKey])
+}
+
+// Track pending deposits from blockchain
+model PendingDeposit {
+  id              String   @id @default(cuid())
+  walletId        String
+  wallet          CustodialWallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  
+  amount          Float
+  txSignature     String   @unique
+  tokenMint       String   // Which token was deposited
+  
+  status          String   @default("pending") // pending, confirmed, failed
+  confirmations   Int      @default(0)
+  
+  createdAt       DateTime @default(now())
+  confirmedAt     DateTime?
+  
+  @@index([walletId])
+  @@index([txSignature])
+  @@index([status])
+}
+
+// Track pending withdrawals to external wallets
+model PendingWithdrawal {
+  id              String   @id @default(cuid())
+  walletId        String
+  wallet          CustodialWallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  
+  amount          Float
+  destinationAddress String  // External wallet to send to
+  tokenMint       String
+  
+  txSignature     String?  // Filled when tx is sent
+  status          String   @default("pending") // pending, processing, confirmed, failed
+  
+  createdAt       DateTime @default(now())
+  processedAt     DateTime?
+  confirmedAt     DateTime?
+  
+  // Error info if failed
+  errorMessage    String?
+  
+  @@index([walletId])
+  @@index([status])
+}
+
+// User aggregate stats (denormalized for fast reads)
+model UserStats {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Game counts
+  totalGamesPlayed    Int      @default(0)
+  totalGamesWon       Int      @default(0)
+  totalGamesLost      Int      @default(0)
+  
+  // Financial
+  totalWagered        Float    @default(0)
+  totalWon            Float    @default(0)
+  totalLost           Float    @default(0)
+  netProfit           Float    @default(0)
+  
+  // Records
+  biggestWin          Float    @default(0)
+  biggestLoss         Float    @default(0)
+  highestMultiplier   Float    @default(0)
+  longestWinStreak    Int      @default(0)
+  longestLoseStreak   Int      @default(0)
+  currentStreak       Int      @default(0)  // Positive = wins, negative = losses
+  
+  // Per-game stats (JSON for flexibility)
+  shootoutStats       Json?    // { played, won, lost, wagered, profit }
+  crashStats          Json?    // { played, avgCashout, bestCashout, totalRides }
+  
+  updatedAt           DateTime @updatedAt
+}
+
+// Balance snapshots for historical tracking
+model BalanceSnapshot {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  balance     Float
+  timestamp   DateTime @default(now())
+  
+  // What caused this snapshot
+  reason      String?  // "deposit", "withdraw", "game_win", "game_loss"
+  
+  @@index([userId, timestamp])
+}
+
+// ============================================
+// TRANSACTIONS
+// ============================================
+
+enum TransactionType {
+  DEPOSIT
+  WITHDRAWAL
+  GAME_BET
+  GAME_WIN
+  GAME_REFUND
+  BONUS
+  FEE
+}
+
+enum TransactionStatus {
+  PENDING
+  CONFIRMED
+  FAILED
+  CANCELLED
+}
+
+model Transaction {
+  id              String            @id @default(cuid())
+  
+  userId          String
+  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  type            TransactionType
+  status          TransactionStatus @default(PENDING)
+  
+  amount          Float
+  balanceBefore   Float
+  balanceAfter    Float
+  
+  // Blockchain data
+  txSignature     String?           @unique
+  blockTime       DateTime?
+  
+  // Reference to game if applicable
+  gameRoundId     String?
+  gameRound       GameRound?        @relation(fields: [gameRoundId], references: [id])
+  
+  // Metadata
+  metadata        Json?             // Extra data like fees, notes
+  
+  createdAt       DateTime          @default(now())
+  confirmedAt     DateTime?
+  
+  @@index([userId, createdAt])
+  @@index([type])
+  @@index([status])
+  @@index([txSignature])
+}
+
+// ============================================
+// GAMES
+// ============================================
+
+enum GameType {
+  SHOOTOUT
+  CRASH
+}
+
+enum GameStatus {
+  WAITING     // Waiting for opponent or to start
+  ACTIVE      // Game in progress
+  COMPLETED   // Finished normally
+  CANCELLED   // Cancelled/refunded
+  EXPIRED     // Timed out
+}
+
+model GameRound {
+  id              String      @id @default(cuid())
+  
+  gameType        GameType
+  status          GameStatus  @default(WAITING)
+  
+  // Player
+  userId          String
+  user            User        @relation(fields: [userId], references: [id])
+  
+  // Wager
+  wagerAmount     Float
+  
+  // Results
+  won             Boolean?
+  payout          Float?
+  profit          Float?      // payout - wager (can be negative)
+  
+  // Transactions linked to this game
+  transactions    Transaction[]
+  
+  // Game-specific data
+  shootoutData    ShootoutRound?
+  crashData       CrashRound?
+  
+  // Provably fair
+  serverSeed      String?
+  serverSeedHash  String?     // Hash shown before game
+  clientSeed      String?
+  nonce           Int         @default(0)
+  
+  // Timestamps
+  createdAt       DateTime    @default(now())
+  startedAt       DateTime?
+  endedAt         DateTime?
+  expiresAt       DateTime?   // For pending games
+  
+  @@index([userId])
+  @@index([gameType, status])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// Shootout-specific data
+model ShootoutRound {
+  id              String    @id @default(cuid())
+  gameRoundId     String    @unique
+  gameRound       GameRound @relation(fields: [gameRoundId], references: [id], onDelete: Cascade)
+  
+  // Mode
+  isPvP           Boolean   @default(true)
+  
+  // Opponent (for PvP)
+  opponentId      String?
+  opponentWager   Float?
+  
+  // Result
+  winnerId        String?
+  winnerSide      String?   // "player" or "opponent" or "house"
+  
+  // Animation data
+  spinResult      Float?    // 0-1 value for spin animation
+  shotFired       Boolean   @default(false)
+  
+  // Share link for PvP
+  shareCode       String?   @unique
+  
+  @@index([shareCode])
+  @@index([opponentId])
+}
+
+// Crash-specific data
+model CrashRound {
+  id              String    @id @default(cuid())
+  gameRoundId     String    @unique
+  gameRound       GameRound @relation(fields: [gameRoundId], references: [id], onDelete: Cascade)
+  
+  // Game outcome
+  crashPoint      Float     // The multiplier it crashed at
+  
+  // Player action
+  cashedOutAt     Float?    // Multiplier when player cashed out (null if crashed)
+  autoCashout     Float?    // Auto cashout setting
+  
+  // Calculated
+  rodeToEnd       Boolean   @default(false)  // Did they ride until crash?
+  
+  @@index([crashPoint])
+}
+
+// ============================================
+// PLATFORM DATA
+// ============================================
+
+// Aggregate stats snapshots (for charts)
+model PlatformSnapshot {
+  id              String   @id @default(cuid())
+  timestamp       DateTime @default(now())
+  
+  // Volume
+  totalVolume     Float    @default(0)
+  volume24h       Float    @default(0)
+  volume1h        Float    @default(0)
+  
+  // Games
+  totalGames      Int      @default(0)
+  games24h        Int      @default(0)
+  games1h         Int      @default(0)
+  
+  // Players
+  totalPlayers    Int      @default(0)
+  activePlayers   Int      @default(0)  // Active in last 5 min
+  
+  // Per game type
+  shootoutGames   Int      @default(0)
+  crashGames      Int      @default(0)
+  
+  @@index([timestamp])
+}
+
+// Live activity feed (recent events)
+model ActivityFeed {
+  id          String   @id @default(cuid())
+  
+  eventType   String   // "big_win", "game_complete", "new_player"
+  
+  // Display data
+  username    String?
+  gameType    GameType?
+  amount      Float?
+  multiplier  Float?
+  
+  // Full data
+  data        Json?
+  
+  createdAt   DateTime @default(now())
+  
+  @@index([createdAt])
+  @@index([eventType])
+}

@@ -1,0 +1,9 @@
+{
+  "crons": [
+    {
+      "path": "/api/admin/process-withdrawals",
+      "schedule": "*/5 * * * *"
+    }
+  ]
+}
+

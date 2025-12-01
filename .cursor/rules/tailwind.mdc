@@ -1,0 +1,6 @@
+---
+alwaysApply: true
+---
+
+
+This is a tailwind application built with NextJS 16 and Tailwind 4.0 with shadcn native and shadcn based external components. Prefer as much as possible not to apply non tailwind CSS classes to keep the workflow clean.
